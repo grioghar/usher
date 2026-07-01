@@ -1,0 +1,12 @@
+services:
+  usher:
+    build: .
+    # or use a prebuilt image: image: ghcr.io/grioghar/usher:latest
+    container_name: usher
+    restart: unless-stopped
+    environment:
+      - PLEX_TOKEN=${PLEX_TOKEN:-}
+    volumes:
+      - ./config:/config:ro
+    ports:
+      - "8099:8099"

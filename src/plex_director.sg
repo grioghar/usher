@@ -1,0 +1,44 @@
+// usher — Plex load-director decision core (Sigil, compiled to wasm32 via cc0).
+//
+// N+1 by construction: the host runtime folds this step over ANY number of
+// Plex servers, so one (or more) can be down and viewers are simply routed to
+// the healthy least-busy remainder. All the routing *policy* — how "busy" is
+// scored, health-gating, and tie-breaking — lives here, in Sigil; the host only
+// iterates and does I/O.
+//
+// State is packed into one i64 (the wasm ABI is i64 in / i64 out):
+//     packed = best_score * 1000 + best_idx
+// best_idx is 0..998; the sentinel 999 means "no healthy server chosen yet".
+// The host seeds packed = 9_000_000_999 (huge score, sentinel index) and calls
+// step() once per server, then decodes best_idx = packed % 1000.
+
+// Weighted busy-ness of one server. A transcode is far heavier than a
+// direct-play stream; cpu is a light tie-breaker. Contracts document + enforce
+// the domain (proved & erased with z3, else kept as guards — the host clamps).
+fn score(streams: Int, transcodes: Int, cpu: Int) -> Int
+    requires streams >= 0 and transcodes >= 0
+    requires cpu >= 0 and cpu <= 100
+    ensures result >= 0
+{
+    return transcodes * 100 + streams * 30 + cpu / 10;
+}
+
+// One fold step: compare the running best (packed) against a candidate server.
+// A down server (up == 0) can never win — that is the N+1 property. Lower score
+// wins; on an exact tie the earlier candidate is kept, so the host's server
+// order is the deterministic tie-break priority.
+fn step(packed: Int, up: Int, streams: Int, transcodes: Int, cpu: Int, idx: Int) -> Int
+    requires idx >= 0 and idx <= 998
+    ensures result >= 0
+{
+    if up == 0 { return packed; }
+    let best_score: Int = packed / 1000;
+    let s: Int = score(streams, transcodes, cpu);
+    if s < best_score { return s * 1000 + idx; }
+    return packed;
+}
+
+// WASM entry point (cc0 exports `main`). One fold step per call.
+fn main(packed: Int, up: Int, streams: Int, transcodes: Int, cpu: Int, idx: Int) -> Int {
+    return step(packed, up, streams, transcodes, cpu, idx);
+}

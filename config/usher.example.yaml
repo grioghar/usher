@@ -1,0 +1,18 @@
+# usher config — copy to config/usher.yaml and edit.
+# The Plex token is best supplied via the PLEX_TOKEN env var (keep it out of git).
+plex_token: ""              # optional; PLEX_TOKEN env overrides this
+poll_sec: 5                 # how often to re-measure server load
+port: 8099
+redirect_mode: app          # "app"   -> https://app.plex.tv/desktop/#!/server/<machine_id>
+                            # "direct"-> <poll_url>/web  (LAN / self-hosted web)
+sticky_sec: 1800            # keep a viewer on their assigned server this long
+
+# List every Plex server that serves the SAME library set.
+# Order is the tie-break priority: on equal load the earlier server wins.
+servers:
+  - name: primary
+    poll_url: http://10.0.0.5:32400
+    machine_id: REPLACE_WITH_PLEX_MACHINE_IDENTIFIER
+  - name: quicksync
+    poll_url: http://10.0.0.6:32400
+    machine_id: REPLACE_WITH_PLEX_MACHINE_IDENTIFIER
