@@ -149,6 +149,6 @@ PLEX_TOKEN=xxxx A_URL=http://a:32400 B_URL=http://b:32400 \
 ```
 
 Run it on a timer (every ~15 min); writes are idempotent so it converges and then
-does nothing until someone watches something new. Items a server doesn't have are
+does nothing until someone watches something new. **Idempotent by design:** watched is compared as a boolean (not exact play-count, since scrobble *increments*), and in-progress within a tolerance — so a synced item is seen as equal on the next run and never re-written. No ping-pong, no double-counted views. Items a server doesn't have are
 skipped. (Currently two-server oriented; extend the `plan()` fold for N.)
 

@@ -81,18 +81,40 @@ def write_state(url, rk, rec):
         return f"progress {rec['vo']//1000}s"
     return None
 
+TOL_MS = 90_000   # in-progress offsets within 90s count as "already the same"
+_ZERO  = {"vc": 0, "vo": 0, "lvat": 0, "dur": 0, "title": ""}
+
+def _canon(rec):
+    """Reduce to a category that is STABLE under our own writes, so the sync is
+    idempotent and can never ping-pong / inflate viewCount:
+      in-progress -> ('progress', offset) ; watched -> ('watched',) ; else ('unwatched',)
+    Note: we compare on watched-as-a-boolean, NOT exact viewCount — because
+    scrobble increments the count, so comparing exact counts would re-fire forever."""
+    if rec.get("vo", 0) > 0: return ("progress", rec["vo"])
+    if rec.get("vc", 0) > 0: return ("watched",)
+    return ("unwatched",)
+
+def _same(ra, rb):
+    ca, cb = _canon(ra), _canon(rb)
+    if ca[0] != cb[0]: return False
+    if ca[0] == "progress": return abs(ca[1] - cb[1]) <= TOL_MS
+    return True   # both watched, or both unwatched
+
 def plan(a, b):
-    """Return (to_B, to_A): items whose newer state should be pushed to the other."""
+    """(to_B, to_A): only items whose category genuinely differs. Newer real state
+    wins; we NEVER propagate 'unwatched' (positive-state only). Because writing
+    makes the two sides _same(), the next run skips them — no ping-pong, no
+    double-counting."""
     to_B, to_A = [], []
     for g in set(a) | set(b):
-        ra, rb = a.get(g), b.get(g)
-        if ra and not rb:            to_B.append((g, ra))
-        elif rb and not ra:          to_A.append((g, rb))
-        elif ra and rb:
-            if ra["lvat"] > rb["lvat"] and (ra["vc"], ra["vo"]) != (rb["vc"], rb["vo"]):
-                to_B.append((g, ra))
-            elif rb["lvat"] > ra["lvat"] and (rb["vc"], rb["vo"]) != (ra["vc"], ra["vo"]):
-                to_A.append((g, rb))
+        ra = a.get(g) or dict(_ZERO, title=(b.get(g) or {}).get("title", ""))
+        rb = b.get(g) or dict(_ZERO, title=(a.get(g) or {}).get("title", ""))
+        if _same(ra, rb):
+            continue
+        if ra["lvat"] >= rb["lvat"]:
+            if _canon(ra)[0] != "unwatched": to_B.append((g, ra))
+        else:
+            if _canon(rb)[0] != "unwatched": to_A.append((g, rb))
     return to_B, to_A
 
 def apply(url, items, limit):
