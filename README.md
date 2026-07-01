@@ -132,3 +132,23 @@ Dockerfile · docker-compose.yml · lxc/install.sh · tools/build-wasm.sh
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Companion: `tools/plexsync.py` — keep watch-state in sync
+
+A director spreads *sessions* across servers, but each Plex server keeps its own
+watch history. `plexsync` reconciles that: an **API-level, bidirectional** diff
+engine that reads watched + in-progress state from every server, matches items by
+their **Plex GUID** (server-agnostic), and writes the **newer** state to the other
+side (newest-wins, positive-state only). It never copies databases (that corrupts
+a claimed server) and never marks anything unwatched.
+
+```bash
+PLEX_TOKEN=xxxx A_URL=http://a:32400 B_URL=http://b:32400 \
+  python3 tools/plexsync.py            # DRY-RUN: shows the diff, writes nothing
+  python3 tools/plexsync.py --apply --limit 250   # sync, capped per run
+```
+
+Run it on a timer (every ~15 min); writes are idempotent so it converges and then
+does nothing until someone watches something new. Items a server doesn't have are
+skipped. (Currently two-server oriented; extend the `plan()` fold for N.)
+
